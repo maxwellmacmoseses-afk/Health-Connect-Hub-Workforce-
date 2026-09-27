@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCH Learning Centre</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header"><div class="container nav"><a class="brand" href="index.html">Health Connect Hub <span>Workforce</span></a><nav><a href="dashboard.html">Dashboard</a><a href="index.html">Home</a></nav></div></header>
+<main class="section"><div class="container">
+<div class="section-head"><p class="eyebrow">HCH LEARNING CENTRE</p><h1>Learn. Apply. Build experience.</h1><p>Courses and learning resources for the HCH Workforce ecosystem. Sign in to access your learning area and, as courses are published, track your progress.</p></div>
+<div id="course-grid" class="cards three"></div>
+<div id="empty" class="notice hidden">No courses have been published yet. The Learning Centre is ready for the first HCH course.</div>
+</div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-config.js"></script>
+<script>
+async function loadCourses(){
+ const {data:{session}}=await supabaseClient.auth.getSession();
+ if(!session){document.getElementById("course-grid").innerHTML='<article><div class="icon">🔐</div><h3>Sign in to continue</h3><p>Create or access your HCH Workforce account to enter the Learning Centre.</p><a href="auth.html">Open account →</a></article>';return}
+ const {data,error}=await supabaseClient.from("courses").select("*").eq("published",true).order("created_at",{ascending:true});
+ if(error){document.getElementById("course-grid").innerHTML='<article><h3>Learning Centre setup</h3><p>Course database setup is not complete yet.</p></article>';return}
+ const grid=document.getElementById("course-grid");
+ if(!data?.length){document.getElementById("empty").classList.remove("hidden");return}
+ grid.innerHTML=data.map(c=>'<article><div class="icon">📚</div><h3>'+escapeHtml(c.title)+'</h3><p>'+escapeHtml(c.description||"HCH learning course")+'</p><span class="tag">'+escapeHtml(c.level||"Beginner")+'</span></article>').join("");
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+loadCourses();
+</script>
+</body></html>
