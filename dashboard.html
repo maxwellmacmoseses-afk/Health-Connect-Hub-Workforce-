@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCH Workforce — Dashboard</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header"><div class="container nav"><a class="brand" href="index.html">Health Connect Hub <span>Workforce</span></a><nav><a href="learning.html">Learning</a><button id="logout" class="link-btn">Sign out</button></nav></div></header>
+<main class="section"><div class="container">
+<div class="dashboard-head"><div><p class="eyebrow">MY HCH WORKFORCE</p><h1 id="welcome">Welcome</h1><p id="account-email" class="muted"></p></div><a class="btn primary" href="learning.html">Open Learning Centre</a></div>
+<div id="message" class="notice hidden"></div>
+<div class="cards three dashboard-cards">
+<article><div class="icon">👤</div><h3>My Profile</h3><p>Build and maintain the information relevant to your HCH Workforce pathway.</p><a href="#profile">Complete profile →</a></article>
+<article><div class="icon">📚</div><h3>Learning Centre</h3><p>Access healthcare learning content and track your progress as courses are added.</p><a href="learning.html">Go to learning →</a></article>
+<article><div class="icon">📩</div><h3>Opportunity communication</h3><p>Your account email can be used to contact you about relevant HCH opportunities and activities.</p><span class="tag">Matching coming next</span></article>
+</div>
+<section id="profile" class="profile-panel">
+<div><p class="eyebrow">PROFILE</p><h2 id="profile-title">Your profile</h2><p class="muted">Complete the basic details below. Additional portfolio fields will be added as the platform grows.</p></div>
+<form id="profile-form" class="profile-form">
+<label>Display name<input id="display_name" required></label>
+<label>Role / pathway<input id="headline" placeholder="e.g. 300-level Microbiology student"></label>
+<label>Location<input id="location" placeholder="City, State, Nigeria"></label>
+<label>Skills / areas of interest<textarea id="skills" rows="4" placeholder="Separate skills or interests with commas"></textarea></label>
+<label>About you<textarea id="bio" rows="5" placeholder="Brief professional or learning profile"></textarea></label>
+<button class="btn primary" type="submit">Save profile</button>
+</form>
+</section>
+</div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-config.js"></script>
+<script>
+const $=id=>document.getElementById(id);let user;
+function msg(t,ok=false){$("message").textContent=t;$("message").className="notice "+(ok?"success":"")}
+async function init(){
+ const {data:{session}}=await supabaseClient.auth.getSession();
+ if(!session){location.href="auth.html";return}
+ user=session.user;$("account-email").textContent=user.email||"";
+ const meta=user.user_metadata||{};$("welcome").textContent="Welcome, "+(meta.full_name||"to HCH Workforce");
+ $("profile-title").textContent=(meta.role||"Your")+" profile";
+ const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",user.id).maybeSingle();
+ if(error){msg(error.message);return}
+ if(data){$("display_name").value=data.display_name||meta.full_name||"";$("headline").value=data.headline||"";$("location").value=data.location||"";$("skills").value=(data.skills||[]).join(", ");$("bio").value=data.bio||""}
+}
+$("profile-form").onsubmit=async e=>{e.preventDefault();const skills=$("skills").value.split(",").map(x=>x.trim()).filter(Boolean);const payload={id:user.id,role:user.user_metadata?.role||"student",display_name:$("display_name").value.trim(),headline:$("headline").value.trim(),location:$("location").value.trim(),skills,bio:$("bio").value.trim(),email:user.email};const {error}=await supabaseClient.from("profiles").upsert(payload);if(error)msg(error.message);else msg("Profile saved successfully.",true)};
+$("logout").onclick=async()=>{await supabaseClient.auth.signOut();location.href="auth.html"};init();
+</script>
+</body></html>
