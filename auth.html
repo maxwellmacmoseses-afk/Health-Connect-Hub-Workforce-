@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCH Workforce — Account</title><meta name="description" content="Create or access your Health Connect Hub Workforce account.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header"><div class="container nav"><a class="brand" href="index.html">Health Connect Hub <span>Workforce</span></a><nav><a href="index.html">Home</a><a href="learning.html">Learning</a></nav></div></header>
+<main class="section"><div class="container auth-wrap">
+<div class="auth-card">
+<p class="eyebrow">HCH WORKFORCE ACCOUNT</p>
+<h1 id="auth-title">Create your account</h1>
+<p id="auth-intro" class="muted">Choose your pathway, create your account and start building your place in the HCH Workforce ecosystem.</p>
+<div id="message" class="notice hidden"></div>
+<form id="auth-form">
+<label>Account type<select id="role" required><option value="student">Student</option><option value="professional">Professional</option><option value="organization">Organization / Institution</option></select></label>
+<label>Full name / organization name<input id="full_name" required autocomplete="name"></label>
+<label>Email address<input id="email" type="email" required autocomplete="email"></label>
+<label>Password<input id="password" type="password" minlength="8" required autocomplete="new-password"></label>
+<button class="btn primary" type="submit" id="submit-btn">Create account</button>
+</form>
+<p class="switch">Already have an account? <button id="toggle" class="link-btn" type="button">Sign in</button></p>
+<p class="small muted">Your email is stored with your account and may be used by Health Connect Hub to contact you about relevant opportunities, projects and updates. It is not displayed publicly by default.</p>
+</div></div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script>
+const form=document.getElementById("auth-form"), role=document.getElementById("role"), fullName=document.getElementById("full_name"), email=document.getElementById("email"), password=document.getElementById("password");
+const title=document.getElementById("auth-title"), intro=document.getElementById("auth-intro"), submit=document.getElementById("submit-btn"), toggle=document.getElementById("toggle"), message=document.getElementById("message");
+let mode="signup";
+function show(text,ok=false){message.textContent=text;message.className="notice "+(ok?"success":"");}
+function setMode(next){mode=next;const signup=mode==="signup";title.textContent=signup?"Create your account":"Welcome back";intro.textContent=signup?"Choose your pathway, create your account and start building your place in the HCH Workforce ecosystem.":"Sign in to continue to your HCH Workforce dashboard.";fullName.parentElement.style.display=signup?"block":"none";role.parentElement.style.display=signup?"block":"none";password.autocomplete=signup?"new-password":"current-password";submit.textContent=signup?"Create account":"Sign in";toggle.textContent=signup?"Sign in":"Create an account";if(!signup){fullName.required=false;role.required=false}else{fullName.required=true;role.required=true}}
+toggle.onclick=()=>{setMode(mode==="signup"?"login":"signup");message.className="notice hidden"};
+form.onsubmit=async(e)=>{e.preventDefault();submit.disabled=true;show(mode==="signup"?"Creating your account…":"Signing you in…",true);
+try{
+ if(mode==="signup"){
+   const {data,error}=await supabaseClient.auth.signUp({email:email.value.trim(),password:password.value,options:{data:{role:role.value,full_name:fullName.value.trim()}}});
+   if(error) throw error;
+   if(data.session){window.location.href="dashboard.html"}else show("Account created. Check your email if email confirmation is enabled, then sign in.",true);
+ }else{
+   const {error}=await supabaseClient.auth.signInWithPassword({email:email.value.trim(),password:password.value});
+   if(error) throw error; window.location.href="dashboard.html";
+ }
+}catch(err){show(err.message||"Something went wrong. Please try again.");}
+finally{submit.disabled=false}};
+supabaseClient.auth.getSession().then(({data})=>{if(data.session) window.location.href="dashboard.html"});
+</script>
+</body></html>
