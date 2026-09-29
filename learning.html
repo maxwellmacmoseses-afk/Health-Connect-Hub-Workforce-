@@ -20,7 +20,7 @@ async function loadCourses(){
  if(error){document.getElementById("course-grid").innerHTML='<article><h3>Learning Centre setup</h3><p>Course database setup is not complete yet.</p></article>';return}
  const grid=document.getElementById("course-grid");
  if(!data?.length){document.getElementById("empty").classList.remove("hidden");return}
- grid.innerHTML=data.map(c=>'<article><div class="icon">📚</div><h3>'+escapeHtml(c.title)+'</h3><p>'+escapeHtml(c.description||"HCH learning course")+'</p><span class="tag">'+escapeHtml(c.level||"Beginner")+'</span></article>').join("");
+ grid.innerHTML=data.map(c=>'<article><div class="icon">📚</div><h3>'+escapeHtml(c.title)+'</h3><p>'+escapeHtml(c.description||"HCH learning course")+'</p><span class="tag">'+escapeHtml(c.level||"Beginner")+'</span><p><a class="btn primary" href="course.html?id='+encodeURIComponent(c.id)+'">Open course →</a></p></article>').join("");
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 loadCourses();
