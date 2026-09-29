@@ -7,40 +7,93 @@
 <body>
 <header class="site-header"><div class="container nav"><a class="brand" href="index.html">Health Connect Hub <span>Workforce</span></a><nav><a href="learning.html">Learning</a><button id="logout" class="link-btn">Sign out</button></nav></div></header>
 <main class="section"><div class="container">
-<div class="dashboard-head"><div><p class="eyebrow">MY HCH WORKFORCE</p><h1 id="welcome">Welcome</h1><p id="account-email" class="muted"></p></div><a class="btn primary" href="learning.html">Open Learning Centre</a></div>
+<div class="dashboard-head"><div><p class="eyebrow" id="pathway-label">MY HCH WORKFORCE</p><h1 id="welcome">Welcome</h1><p id="account-email" class="muted"></p></div><a class="btn primary" href="learning.html">Open Learning Centre</a></div>
 <div id="message" class="notice hidden"></div>
-<div class="cards three dashboard-cards">
-<article><div class="icon">👤</div><h3>My Profile</h3><p>Build and maintain the information relevant to your HCH Workforce pathway.</p><a href="#profile">Complete profile →</a></article>
-<article><div class="icon">📚</div><h3>Learning Centre</h3><p>Access healthcare learning content and track your progress as courses are added.</p><a href="learning.html">Go to learning →</a></article>
-<article><div class="icon">📩</div><h3>Opportunity communication</h3><p>Your account email can be used to contact you about relevant HCH opportunities and activities.</p><span class="tag">Matching coming next</span></article>
-</div>
+<div id="role-summary" class="notice"></div>
+
 <section id="profile" class="profile-panel">
-<div><p class="eyebrow">PROFILE</p><h2 id="profile-title">Your profile</h2><p class="muted">Complete the basic details below. Additional portfolio fields will be added as the platform grows.</p></div>
+<div><p class="eyebrow">PROFILE</p><h2 id="profile-title">Your profile</h2><p id="profile-intro" class="muted">Build the information relevant to your HCH Workforce pathway.</p></div>
 <form id="profile-form" class="profile-form">
-<label>Display name<input id="display_name" required></label>
-<label>Role / pathway<input id="headline" placeholder="e.g. 300-level Microbiology student"></label>
+<label>Display name / organization name<input id="display_name" required></label>
+<label id="headline-label">Role / professional headline<input id="headline" placeholder="e.g. Public Health Professional"></label>
 <label>Location<input id="location" placeholder="City, State, Nigeria"></label>
+
+<div id="student-fields" class="role-fields">
+<label>Institution<input id="institution" placeholder="University / institution"></label>
+<label>Course of study<input id="course_of_study" placeholder="e.g. Microbiology"></label>
+<label>Academic level<input id="academic_level" placeholder="e.g. 300 Level"></label>
 <label>Skills / areas of interest<textarea id="skills" rows="4" placeholder="Separate skills or interests with commas"></textarea></label>
-<label>About you<textarea id="bio" rows="5" placeholder="Brief professional or learning profile"></textarea></label>
+</div>
+
+<div id="professional-fields" class="role-fields hidden">
+<label>Qualifications<input id="qualifications" placeholder="Degrees, certifications, professional training"></label>
+<label>Professional registration<input id="professional_registration" placeholder="Registration / licence information where applicable"></label>
+<label>Services / areas of expertise<textarea id="services" rows="4" placeholder="What can you contribute or provide?"></textarea></label>
+<label>Experience<textarea id="experience" rows="5" placeholder="Brief professional experience"></textarea></label>
+</div>
+
+<div id="organization-fields" class="role-fields hidden">
+<label>Organization type<input id="organization_type" placeholder="NGO, hospital, institution, project, company, etc."></label>
+<label>Website / public page<input id="website" placeholder="https://..."></label>
+<label>Workforce needs<textarea id="workforce_needs" rows="4" placeholder="What skills, roles or support may your organization need?"></textarea></label>
+<label>Organization experience / focus<textarea id="experience_org" rows="5" placeholder="Describe your work, projects and areas of focus"></textarea></label>
+</div>
+
+<label id="bio-label">About you / profile summary<textarea id="bio" rows="5" placeholder="Brief profile summary"></textarea></label>
 <button class="btn primary" type="submit">Save profile</button>
 </form>
 </section>
+
+<div class="cards three dashboard-cards">
+<article><div class="icon">📚</div><h3>Learning Centre</h3><p>Access HCH learning content and build practical knowledge.</p><a href="learning.html">Go to learning →</a></article>
+<article><div class="icon">🪪</div><h3 id="portfolio-card-title">Profile building</h3><p id="portfolio-card-copy">Complete your information now. Portfolio and public profile features will expand as the platform develops.</p><span class="tag">Building now</span></article>
+<article><div class="icon">📩</div><h3>Opportunities</h3><p>HCH is preparing the next stage for opportunity discovery, matching and engagement.</p><span class="tag">Matching coming next</span></article>
+</div>
 </div></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-config.js"></script>
 <script>
-const $=id=>document.getElementById(id);let user;
+const $=id=>document.getElementById(id); let user, role;
 function msg(t,ok=false){$("message").textContent=t;$("message").className="notice "+(ok?"success":"")}
+function showRole(){
+ const labels={student:["STUDENT WORKFORCE PATHWAY","Student profile","Build your student profile, learning record and practical experience pathway."],professional:["PROFESSIONAL WORKFORCE PATHWAY","Professional portfolio","Build your professional profile with qualifications, experience, skills and areas of expertise."],organization:["ORGANIZATION / INSTITUTION PATHWAY","Organization profile","Build your organization profile and describe projects, workforce needs and areas of focus."]};
+ const x=labels[role]||labels.student;
+ $("pathway-label").textContent=x[0]; $("profile-title").textContent=x[1]; $("profile-intro").textContent=x[2];
+ $("role-summary").textContent=role==="professional"?"Your professional profile is being prepared for future opportunity discovery and matching. Matching is not live yet.":role==="organization"?"Your organization profile can be prepared now. Future matching and hiring features are still being developed.":"Your student profile connects your learning and practical experience pathway.";
+ $("student-fields").classList.toggle("hidden",role!=="student");
+ $("professional-fields").classList.toggle("hidden",role!=="professional");
+ $("organization-fields").classList.toggle("hidden",role!=="organization");
+ $("portfolio-card-title").textContent=role==="professional"?"Professional portfolio":role==="organization"?"Organization profile":"Student profile";
+ $("portfolio-card-copy").textContent=role==="professional"?"Add qualifications, registration, experience and expertise now. Opportunity matching will come in a later platform stage.":role==="organization"?"Add your organization type, focus, website and workforce needs now. Hiring/matching will come in a later platform stage.":"Build your student profile, learning record and practical experience pathway.";
+}
 async function init(){
  const {data:{session}}=await supabaseClient.auth.getSession();
  if(!session){location.href="auth.html";return}
- user=session.user;$("account-email").textContent=user.email||"";
- const meta=user.user_metadata||{};$("welcome").textContent="Welcome, "+(meta.full_name||"to HCH Workforce");
- $("profile-title").textContent=(meta.role||"Your")+" profile";
+ user=session.user; role=user.user_metadata?.role||"student"; showRole();
+ $("account-email").textContent=user.email||"";
+ $("welcome").textContent="Welcome, "+(user.user_metadata?.full_name||"to HCH Workforce");
  const {data,error}=await supabaseClient.from("profiles").select("*").eq("id",user.id).maybeSingle();
  if(error){msg(error.message);return}
- if(data){$("display_name").value=data.display_name||meta.full_name||"";$("headline").value=data.headline||"";$("location").value=data.location||"";$("skills").value=(data.skills||[]).join(", ");$("bio").value=data.bio||""}
+ if(data){
+  $("display_name").value=data.display_name||user.user_metadata?.full_name||"";
+  $("headline").value=data.headline||""; $("location").value=data.location||"";
+  $("skills").value=(data.skills||[]).join(", "); $("bio").value=data.bio||"";
+  $("institution").value=data.institution||""; $("course_of_study").value=data.course_of_study||""; $("academic_level").value=data.academic_level||"";
+  $("qualifications").value=data.qualifications||""; $("professional_registration").value=data.professional_registration||""; $("services").value=data.services||""; $("experience").value=data.experience||"";
+  $("organization_type").value=data.organization_type||""; $("website").value=data.website||""; $("workforce_needs").value=data.workforce_needs||""; $("experience_org").value=data.experience||"";
+ }
 }
-$("profile-form").onsubmit=async e=>{e.preventDefault();const skills=$("skills").value.split(",").map(x=>x.trim()).filter(Boolean);const payload={id:user.id,role:user.user_metadata?.role||"student",display_name:$("display_name").value.trim(),headline:$("headline").value.trim(),location:$("location").value.trim(),skills,bio:$("bio").value.trim(),email:user.email};const {error}=await supabaseClient.from("profiles").upsert(payload);if(error)msg(error.message);else msg("Profile saved successfully.",true)};
-$("logout").onclick=async()=>{await supabaseClient.auth.signOut();location.href="auth.html"};init();
+$("profile-form").onsubmit=async e=>{
+ e.preventDefault();
+ const skills=$("skills").value.split(",").map(x=>x.trim()).filter(Boolean);
+ const payload={id:user.id,role,display_name:$("display_name").value.trim(),headline:$("headline").value.trim(),location:$("location").value.trim(),skills,bio:$("bio").value.trim(),email:user.email,
+ institution:$("institution").value.trim(),course_of_study:$("course_of_study").value.trim(),academic_level:$("academic_level").value.trim(),
+ qualifications:$("qualifications").value.trim(),professional_registration:$("professional_registration").value.trim(),services:$("services").value.trim(),
+ organization_type:$("organization_type").value.trim(),website:$("website").value.trim(),workforce_needs:$("workforce_needs").value.trim(),
+ experience:role==="organization"?$("experience_org").value.trim():$("experience").value.trim()};
+ const {error}=await supabaseClient.from("profiles").upsert(payload);
+ if(error)msg(error.message);else msg("Profile saved successfully.",true);
+};
+$("logout").onclick=async()=>{await supabaseClient.auth.signOut();location.href="auth.html"};
+init();
 </script>
 </body></html>
