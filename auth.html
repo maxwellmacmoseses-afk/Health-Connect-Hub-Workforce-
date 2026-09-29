@@ -26,8 +26,9 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <script>
-const params=new URLSearchParams(location.search); const requestedRole=params.get("role"); if(["student","professional","organization"].includes(requestedRole)) role.value=requestedRole;
+const params=new URLSearchParams(location.search); const requestedRole=params.get("role");
 const form=document.getElementById("auth-form"), role=document.getElementById("role"), fullName=document.getElementById("full_name"), email=document.getElementById("email"), password=document.getElementById("password");
+if(["student","professional","organization"].includes(requestedRole)) role.value=requestedRole;
 const title=document.getElementById("auth-title"), intro=document.getElementById("auth-intro"), submit=document.getElementById("submit-btn"), toggle=document.getElementById("toggle"), message=document.getElementById("message");
 let mode="signup";
 function show(text,ok=false){message.textContent=text;message.className="notice "+(ok?"success":"");}
