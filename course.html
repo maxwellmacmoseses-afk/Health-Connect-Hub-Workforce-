@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HCH Workforce — Course</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="site-header"><div class="container nav"><a class="brand" href="index.html">Health Connect Hub <span>Workforce</span></a><nav><a href="learning.html">Learning</a><a href="dashboard.html">Dashboard</a></nav></div></header>
+<main class="section"><div class="container">
+<div id="course-header"></div>
+<div id="course-content"></div>
+</div></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="supabase-config.js"></script>
+<script>
+const params=new URLSearchParams(location.search), courseId=params.get("id");
+const header=document.getElementById("course-header"), content=document.getElementById("course-content");
+function esc(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+async function init(){
+ const {data:{session}}=await supabaseClient.auth.getSession();
+ if(!session){location.href="auth.html";return}
+ if(!courseId){header.innerHTML="<h1>Course not found</h1>";return}
+ const {data:course,error:ce}=await supabaseClient.from("courses").select("*").eq("id",courseId).eq("published",true).maybeSingle();
+ if(ce||!course){header.innerHTML="<h1>Course not found</h1>";return}
+ await supabaseClient.from("course_enrollments").upsert({user_id:session.user.id,course_id:courseId},{onConflict:"user_id,course_id"});
+ const {data:mods,error:me}=await supabaseClient.from("course_modules").select("*").eq("course_id",courseId).order("module_order");
+ if(me){content.innerHTML="<div class='notice'>The course structure is being prepared. Please try again shortly.</div>";return}
+ const {data:progress}=await supabaseClient.from("lesson_progress").select("lesson_id,completed").eq("user_id",session.user.id);
+ const done=new Set((progress||[]).filter(x=>x.completed).map(x=>x.lesson_id));
+ header.innerHTML='<p class="eyebrow">HCH LEARNING CENTRE</p><h1>'+esc(course.title)+'</h1><p class="muted">'+esc(course.description)+'</p>';
+ let out="";
+ for(const m of (mods||[])){
+   const {data:lessons}=await supabaseClient.from("course_lessons").select("*").eq("module_id",m.id).order("lesson_order");
+   out+='<section class="profile-panel"><p class="eyebrow">MODULE '+m.module_order+'</p><h2>'+esc(m.title)+'</h2><p>'+esc(m.description)+'</p>';
+   for(const l of (lessons||[])){
+     const isDone=done.has(l.id);
+     out+='<article style="margin-top:1rem;padding:1rem;border:1px solid rgba(0,0,0,.1);border-radius:12px"><h3>'+esc(l.title)+'</h3><p>'+esc(l.content)+'</p><button class="btn '+(isDone?'':'primary')+'" data-lesson="'+l.id+'" data-done="'+isDone+'">'+(isDone?'✓ Completed':'Mark lesson complete')+'</button></article>';
+   }
+   out+='</section>';
+ }
+ content.innerHTML=out||'<div class="notice">No modules have been added yet.</div>';
+ content.querySelectorAll("[data-lesson]").forEach(btn=>btn.onclick=async()=>{
+   const lessonId=btn.dataset.lesson, was=btn.dataset.done==="true";
+   const payload={user_id:session.user.id,lesson_id:lessonId,completed:!was,completed_at:!was?new Date().toISOString():null};
+   const {error}=await supabaseClient.from("lesson_progress").upsert(payload,{onConflict:"user_id,lesson_id"});
+   if(!error){btn.dataset.done=String(!was);btn.textContent=!was?"✓ Completed":"Mark lesson complete";btn.className="btn "+(!was?"":"primary")}
+ });
+}
+init();
+</script>
+</body></html>
