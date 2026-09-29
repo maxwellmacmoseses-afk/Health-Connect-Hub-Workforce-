@@ -26,6 +26,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <script>
+const params=new URLSearchParams(location.search); const requestedRole=params.get("role"); if(["student","professional","organization"].includes(requestedRole)) role.value=requestedRole;
 const form=document.getElementById("auth-form"), role=document.getElementById("role"), fullName=document.getElementById("full_name"), email=document.getElementById("email"), password=document.getElementById("password");
 const title=document.getElementById("auth-title"), intro=document.getElementById("auth-intro"), submit=document.getElementById("submit-btn"), toggle=document.getElementById("toggle"), message=document.getElementById("message");
 let mode="signup";
@@ -44,6 +45,16 @@ try{
  }
 }catch(err){show(err.message||"Something went wrong. Please try again.");}
 finally{submit.disabled=false}};
-supabaseClient.auth.getSession().then(({data})=>{if(data.session) window.location.href="dashboard.html"});
+supabaseClient.auth.getSession().then(({data})=>{
+  if(data.session){
+    const currentRole=data.session.user.user_metadata?.role||"student";
+    if(requestedRole && requestedRole!==currentRole){
+      show("You are already signed in as a "+currentRole+". Sign out first to create or access a separate "+requestedRole+" account.",false);
+      submit.disabled=false;
+      return;
+    }
+    window.location.href="dashboard.html";
+  }
+});
 </script>
 </body></html>
