@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join HCH as a provider</title>
+<style>
+:root{--bg:#f6f8f7;--card:#fff;--tx:#14201b;--mu:#5d6b64;--ac:#0f766e;--bd:#d9e1dd;--bad:#b42318}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1512;--card:#16201b;--tx:#e8f0ec;--mu:#9baba3;--ac:#2dd4bf;--bd:#2a3a33;--bad:#f97066}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:640px;margin:0 auto;padding:16px}h1{font-size:21px;margin:0 0 4px}h2{font-size:16px;margin:14px 0 6px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:14px}
+label{display:block;font-size:13px;color:var(--mu);margin:8px 0 3px}
+input,select,textarea{font:inherit;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);width:100%}
+input[type=checkbox]{width:auto;margin-right:6px}
+button{font:inherit;padding:10px 16px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer}
+button.sec{background:transparent;color:var(--ac);border:1px solid var(--ac)}button:disabled{opacity:.5}
+.types{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.types button{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.types button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.mu{color:var(--mu);font-size:13px}.msg{padding:9px;border-radius:8px;margin-bottom:10px}.ok{background:#d1fadf;color:#05603a}.er{background:#fee4e2;color:#912018}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:520px){.grid{grid-template-columns:1fr}}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<h1>Join Health Connect Hub</h1>
+<p class="mu">Pharmacies, laboratories and doctors: apply below. Every application is checked against your professional licence before you go live.</p>
+<div id="msg"></div>
+<div id="gate" class="card" hidden>Please <a href="auth.html">sign in or create an account</a> first, then return to this page.</div>
+<div id="status" class="card" hidden></div>
+<form id="form" class="card" hidden onsubmit="return false">
+  <div class="types" id="types">
+    <button type="button" data-t="pharmacy">Pharmacy</button>
+    <button type="button" data-t="laboratory">Laboratory</button>
+    <button type="button" data-t="doctor">Doctor</button>
+  </div>
+
+  <div id="biz" hidden>
+    <label>Business name</label><input id="name" maxlength="120">
+    <label id="licLabel">Licence number</label><input id="lic" maxlength="60">
+    <label>Business phone (patients can call this)</label><input id="phone" type="tel" maxlength="25">
+    <label>About your business</label><textarea id="desc" rows="3" maxlength="600"></textarea>
+    <div class="grid"><div><label>State</label><input id="state" maxlength="40"></div><div><label>City / Town</label><input id="city" maxlength="60"></div></div>
+    <label>Street address</label><input id="addr" maxlength="200">
+    <label><input type="checkbox" id="geoOk">I agree to share my business location so patients nearby can find me.</label>
+    <button type="button" class="sec" id="geo">Use my current location</button> <span class="mu" id="geoOut"></span>
+    <div id="phBox"><label><input type="checkbox" id="delivers" checked>We deliver</label><label>Delivery fee (₦)</label><input id="dfee" type="number" min="0" value="0"></div>
+    <div id="labBox" hidden><label><input type="checkbox" id="home" checked>We offer home sample collection</label><label>Collection fee (₦)</label><input id="cfee" type="number" min="0" value="0"></div>
+    <label>Logo (JPG/PNG, up to 2 MB)</label><input id="logo" type="file" accept="image/png,image/jpeg,image/webp">
+    <label>Banner (optional)</label><input id="banner" type="file" accept="image/png,image/jpeg,image/webp">
+  </div>
+
+  <div id="docBox" hidden>
+    <label>Specialty</label><input id="spec" maxlength="80">
+    <label>MDCN licence number</label><input id="dlic" maxlength="60">
+    <div class="grid"><div><label>Years of experience</label><input id="yrs" type="number" min="0" max="70"></div>
+    <div><label>Consultation fee (₦)</label><input id="fee" type="number" min="0" step="100"></div></div>
+    <label>About you</label><textarea id="about" rows="3" maxlength="600"></textarea>
+    <label>Profile photo (optional)</label><input id="photo" type="file" accept="image/png,image/jpeg,image/webp">
+  </div>
+
+  <div id="proof" hidden>
+    <h2>Licence document</h2>
+    <p class="mu">Upload a clear photo or PDF of your licence (PCN, MLSCN or MDCN). It is stored privately and only our review team can open it.</p>
+    <input id="licfile" type="file" accept="image/png,image/jpeg,application/pdf">
+    <label><input type="checkbox" id="agree">I confirm the information is true and I agree to the platform's terms and privacy policy.</label>
+    <button id="submit" type="button">Submit application</button>
+  </div>
+</form>
+</main>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function fatal(t) { const d = document.createElement("div"); d.className = "msg er"; d.textContent = t; document.getElementById("msg").appendChild(d); }
+let db;
+try {
+  if (typeof HCH === "undefined") throw new Error("config.js did not load. Check that it is in the main folder, named exactly config.js.");
+  if (!HCH.url || HCH.url.includes("PASTE") || !HCH.key || HCH.key.includes("PASTE")) throw new Error("config.js still has the placeholder text. Paste your Project URL and anon key.");
+  HCH.url = HCH.url.trim().replace(/\/rest\/v1\/?$/, "").replace(/\/+$/, ""); HCH.key = HCH.key.trim();
+  if (!/^https:\/\/[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(HCH.url)) throw new Error("Project URL looks wrong: it reads \"" + HCH.url.slice(0, 40) + "\". It must start with https:// and look like https://xxxx.supabase.co");
+  if (typeof supabase === "undefined") throw new Error("The Supabase library did not load. Check your internet connection and try again.");
+  db = supabase.createClient(HCH.url, HCH.key);
+} catch (e) { fatal(e.message); }
+let uid = null, type = null, lat = null, lng = null;
+function say(t, ok) { $("msg").innerHTML = ""; if (!t) return; const d = document.createElement("div"); d.className = "msg " + (ok ? "ok" : "er"); d.textContent = t; $("msg").appendChild(d); window.scrollTo(0, 0); }
+
+async function init() {
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { $("gate").hidden = false; return; }
+  uid = session.user.id;
+  const [a, b, c] = await Promise.all([
+    db.from("pharmacies").select("name,status").eq("owner_id", uid).maybeSingle(),
+    db.from("laboratories").select("name,status").eq("owner_id", uid).maybeSingle(),
+    db.from("doctor_profiles").select("specialty,approved").eq("user_id", uid).maybeSingle()]);
+  const found = a.data ? ["Pharmacy", a.data.name, a.data.status] : b.data ? ["Laboratory", b.data.name, b.data.status]
+    : c.data ? ["Doctor", c.data.specialty, c.data.approved ? "approved" : "pending"] : null;
+  if (found) { $("status").hidden = false;
+    $("status").textContent = `${found[0]} application (${found[1]}): ${found[2] === "approved" ? "approved, you are live." : found[2] === "pending" ? "pending review. We will notify you once checked." : "status: " + found[2]}`; return; }
+  $("form").hidden = false;
+}
+$("types").onclick = e => { const t = e.target.dataset.t; if (!t) return; type = t;
+  [...$("types").children].forEach(b => b.classList.toggle("on", b.dataset.t === t));
+  const doc = t === "doctor"; $("biz").hidden = doc; $("docBox").hidden = !doc; $("proof").hidden = false;
+  $("phBox").hidden = t !== "pharmacy"; $("labBox").hidden = t !== "laboratory";
+  $("licLabel").textContent = t === "pharmacy" ? "PCN premises licence number" : "MLSCN licence number"; };
+
+$("geo").onclick = () => {
+  if (!$("geoOk").checked) return say("Please tick the consent box first.", false);
+  if (!navigator.geolocation) return say("Location is not supported on this device.", false);
+  navigator.geolocation.getCurrentPosition(p => { lat = p.coords.latitude; lng = p.coords.longitude; $("geoOut").textContent = "Location captured."; say(""); },
+    () => say("Could not get location. You can still submit; we can add it later.", false), { enableHighAccuracy: true, timeout: 15000 });
+};
+
+async function upload(bucket, file, label, maxMB, allowed) {
+  if (!file) return null;
+  if (!allowed.includes(file.type)) throw new Error(`${label}: file type not allowed.`);
+  if (file.size > maxMB * 1048576) throw new Error(`${label}: file is larger than ${maxMB} MB.`);
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const path = `${uid}/${label}-${Date.now()}.${ext}`;
+  const { error } = await db.storage.from(bucket).upload(path, file, { contentType: file.type });
+  if (error) throw new Error(`${label} upload failed: ${error.message}`);
+  return path;
+}
+const IMG = ["image/png", "image/jpeg", "image/webp"], DOC = [...IMG, "application/pdf"];
+
+$("submit").onclick = async () => {
+  if (!type) return say("Choose Pharmacy, Laboratory or Doctor.", false);
+  if (!$("agree").checked) return say("Please confirm the declaration.", false);
+  if (!$("licfile").files[0]) return say("Please upload your licence document.", false);
+  const doc = type === "doctor";
+  const req = doc ? [$("spec").value, $("dlic").value, $("fee").value] : [$("name").value, $("lic").value, $("phone").value, $("addr").value, $("state").value, $("city").value];
+  if (req.some(v => !String(v).trim())) return say("Please fill in all required fields.", false);
+  $("submit").disabled = true; say("Uploading, please wait...", true);
+  try {
+    const licPath = await upload("private-docs", $("licfile").files[0], "licence", 5, DOC);
+    let err, label;
+    if (doc) {
+      const photo = await upload("brand-assets", $("photo").files[0], "photo", 2, IMG);
+      ({ error: err } = await db.from("doctor_profiles").insert({ user_id: uid, specialty: $("spec").value.trim(), licence_number: $("dlic").value.trim(),
+        years_experience: Number($("yrs").value) || null, consultation_fee: Number($("fee").value) || 0, about: $("about").value.trim(), photo_path: photo }));
+      label = "Doctor: " + $("spec").value.trim();
+    } else {
+      const logo = await upload("brand-assets", $("logo").files[0], "logo", 2, IMG), banner = await upload("brand-assets", $("banner").files[0], "banner", 2, IMG);
+      const base = { owner_id: uid, name: $("name").value.trim(), phone: $("phone").value.trim(), address_text: $("addr").value.trim(), state: $("state").value.trim(),
+        city: $("city").value.trim(), description: $("desc").value.trim(), logo_path: logo, banner_path: banner, latitude: $("geoOk").checked ? lat : null, longitude: $("geoOk").checked ? lng : null };
+      if (type === "pharmacy") ({ error: err } = await db.from("pharmacies").insert({ ...base, pcn_licence: $("lic").value.trim(), delivers: $("delivers").checked, delivery_fee: Number($("dfee").value) || 0 }));
+      else ({ error: err } = await db.from("laboratories").insert({ ...base, mlscn_licence: $("lic").value.trim(), home_collection: $("home").checked, collection_fee: Number($("cfee").value) || 0 }));
+      label = (type === "pharmacy" ? "Pharmacy: " : "Laboratory: ") + $("name").value.trim();
+    }
+    if (err) throw new Error(err.message.includes("duplicate") ? "You already have an application." : err.message);
+    await db.from("verification_requests").insert({ user_id: uid, document_path: licPath, notes: label });
+    $("form").hidden = true; say("Application submitted. We will review your licence and notify you.", true); init();
+  } catch (e) { say(e.message, false); $("submit").disabled = false; }
+};
+if (db) init();
+</script>
+</body>
+</html>
