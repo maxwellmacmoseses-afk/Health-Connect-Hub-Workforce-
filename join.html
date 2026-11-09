@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join Health Connect Hub</title>
+<style>
+:root{--bg:#f6f8f7;--card:#fff;--tx:#14201b;--mu:#5d6b64;--ac:#0f766e;--bd:#d9e1dd}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1512;--card:#16201b;--tx:#e8f0ec;--mu:#9baba3;--ac:#2dd4bf;--bd:#2a3a33}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:860px;margin:0 auto;padding:18px}h1{font-size:24px;margin:0 0 4px}.mu{color:var(--mu);font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0}
+.opt{background:var(--card);border:2px solid var(--bd);border-radius:12px;padding:14px;cursor:pointer;text-align:left;font:inherit;color:var(--tx)}
+.opt:hover,.opt.on{border-color:var(--ac)}.opt .i{font-size:26px}.opt b{display:block;margin:4px 0 2px}.opt .n{font-size:12px;color:var(--ac);margin-top:6px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-top:8px}
+label{display:block;font-size:13px;color:var(--mu);margin:8px 0 3px}
+input{font:inherit;padding:10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);width:100%}
+input[type=checkbox]{width:auto;margin-right:6px}
+button.go{font:inherit;padding:11px 18px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer;margin-top:12px}
+a,.lk{color:var(--ac);cursor:pointer;text-decoration:underline}
+.msg{padding:9px;border-radius:8px;margin:10px 0}.ok{background:#d1fadf;color:#05603a}.er{background:#fee4e2;color:#912018}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<h1>Join Health Connect Hub</h1>
+<p class="mu">Choose the option that fits you. You can learn, work, consult, treat or get care, all in one place.</p>
+<div id="msg"></div>
+<div id="back" class="card" hidden></div>
+<div id="grid" class="grid"></div>
+<form id="form" class="card" hidden onsubmit="return false">
+  <h2 id="ftitle" style="margin:0 0 4px;font-size:18px"></h2>
+  <div class="mu" id="fnote"></div>
+  <div id="nameBox"><label>Full name (or organization name)</label><input id="name" maxlength="120" autocomplete="name"></div>
+  <label>Email address</label><input id="email" type="email" autocomplete="username">
+  <label>Password (at least 8 characters)</label><input id="pw" type="password" autocomplete="new-password">
+  <label id="termsBox"><input type="checkbox" id="terms"><span id="termsText"></span></label>
+  <button class="go" id="submit"></button>
+  <p class="mu" id="toggle"></p>
+</form>
+<p class="mu" id="signinHint">Already have an account? <span class="lk" id="goIn">Sign in</span></p>
+</main>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+function say(t, ok) { $("msg").innerHTML = ""; if (!t) return; const d = document.createElement("div"); d.className = "msg " + (ok ? "ok" : "er"); d.textContent = t; $("msg").appendChild(d); window.scrollTo(0, 0); }
+let db;
+try {
+  if (typeof HCH === "undefined") throw new Error("config.js did not load.");
+  HCH.url = HCH.url.trim().replace(/\/+$/, ""); db = supabase.createClient(HCH.url, HCH.key.trim());
+} catch (e) { say(e.message, false); }
+
+const ROLES = [
+  { k: "student", t: "Students", i: "🎓", d: "Take health courses, earn certificates and build experience.", n: "Free to join" },
+  { k: "professional", t: "Health Professionals", i: "💼", d: "Nurses, pharmacists, lab scientists, midwives, caregivers, doctors and more: build your profile and portfolio, then apply for permanent, temporary or locum roles.", n: "Free to join" },
+  { k: "organization", t: "Organizations & Institutions", i: "🏛️", d: "Post projects, find talent and train your team.", n: "Verification needed to post" },
+  { k: "doctor", t: "Doctors (Consultations)", i: "🩺", d: "Go online and take patient consultation requests by video, voice or chat.", n: "MDCN licence required" },
+  { k: "pharmacy", t: "Pharmacies", i: "💊", d: "List your drugs, receive prescriptions and get paid daily.", n: "PCN licence required" },
+  { k: "laboratory", t: "Laboratories", i: "🔬", d: "List your tests, collect samples and deliver results.", n: "MLSCN licence required" },
+  { k: "patient", t: "Patients & Individuals", i: "🙋", d: "See a doctor, order prescribed drugs and book lab tests.", n: "Free to join" }
+];
+const PROVIDERS = ["doctor", "pharmacy", "laboratory"];
+let pick = null, mode = "up";
+
+ROLES.forEach(r => { const b = document.createElement("button"); b.type = "button"; b.className = "opt"; b.dataset.k = r.k;
+  b.innerHTML = `<div class="i">${r.i}</div><b>${r.t}</b><span class="mu">${r.d}</span><div class="n">${r.n}</div>`;
+  b.onclick = () => choose(r.k); $("grid").appendChild(b); });
+
+function choose(k) { pick = k; mode = "up"; [...$("grid").children].forEach(b => b.classList.toggle("on", b.dataset.k === k)); showForm(); }
+$("goIn").onclick = () => { pick = null; mode = "in"; [...$("grid").children].forEach(b => b.classList.remove("on")); showForm(); };
+
+function showForm() {
+  const r = ROLES.find(x => x.k === pick), up = mode === "up";
+  $("form").hidden = false; say("");
+  $("ftitle").textContent = up ? "Create your " + r.t.toLowerCase().replace("&", "and") + " account" : "Sign in";
+  $("fnote").textContent = up && PROVIDERS.includes(pick) ? "After you sign up, you will submit your licence for review." : "";
+  $("nameBox").hidden = !up; $("termsBox").hidden = !up;
+  $("termsText").textContent = pick === "patient"
+    ? "I agree to the Terms and Privacy Policy and consent to my health information and location being used to provide care."
+    : "I agree to the Terms and Privacy Policy.";
+  $("submit").textContent = up ? "Create account" : "Sign in";
+  $("pw").autocomplete = up ? "new-password" : "current-password";
+  $("toggle").innerHTML = up ? 'Already have an account? <span class="lk" id="sw">Sign in</span>' : 'New here? Choose an option above.';
+  if (up) $("sw").onclick = () => { mode = "in"; showForm(); };
+  $("form").scrollIntoView({ behavior: "smooth" });
+}
+
+function destination(role) {
+  if (PROVIDERS.includes(role)) return "onboard.html?type=" + role;
+  return role === "student" ? "learning.html" : "dashboard.html";
+}
+async function go() {
+  const { data: { session } } = await db.auth.getSession(); if (!session) return;
+  const { data: p } = await db.from("profiles").select("role").eq("id", session.user.id).maybeSingle();
+  location.href = destination(p ? p.role : "student");
+}
+
+$("submit").onclick = async () => {
+  const email = $("email").value.trim(), pw = $("pw").value;
+  if (!email || pw.length < 8) return say("Enter your email and a password of at least 8 characters.", false);
+  $("submit").disabled = true;
+  try {
+    if (mode === "in") {
+      const { error } = await db.auth.signInWithPassword({ email, password: pw }); if (error) throw error; await go(); return;
+    }
+    if (!pick) throw new Error("Please choose an option above.");
+    if (!$("name").value.trim()) throw new Error("Please enter your name.");
+    if (!$("terms").checked) throw new Error("Please accept the terms to continue.");
+    const { data, error } = await db.auth.signUp({ email, password: pw,
+      options: { data: { role: pick, display_name: $("name").value.trim() }, emailRedirectTo: location.origin + location.pathname } });
+    if (error) throw error;
+    if (data.session) { await go(); return; }
+    $("form").hidden = true; say("Account created. Please check your email and tap the confirmation link, then come back here and sign in.", true);
+  } catch (e) { say(e.message, false); }
+  $("submit").disabled = false;
+};
+
+(async () => { if (!db) return;
+  const { data: { session } } = await db.auth.getSession();
+  if (session) { $("back").hidden = false; $("signinHint").hidden = true;
+    $("back").innerHTML = 'You are signed in. <button class="go" id="cont" style="margin:0 0 0 8px">Continue</button> <span class="lk" id="so">Sign out</span>';
+    $("cont").onclick = go; $("so").onclick = async () => { await db.auth.signOut(); location.reload(); }; }
+})();
+</script>
+</body>
+</html>
