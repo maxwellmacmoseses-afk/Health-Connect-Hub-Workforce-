@@ -15,7 +15,7 @@ input,select,textarea{font:inherit;padding:9px 10px;border:1px solid var(--bd);b
 input[type=checkbox]{width:auto;margin-right:6px}
 button{font:inherit;padding:10px 16px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer}
 button.sec{background:transparent;color:var(--ac);border:1px solid var(--ac)}button:disabled{opacity:.5}
-.types{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.types button{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}.types button{background:transparent;color:var(--tx);border:1px solid var(--bd)}
 .types button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
 .mu{color:var(--mu);font-size:13px}.msg{padding:9px;border-radius:8px;margin-bottom:10px}.ok{background:#d1fadf;color:#05603a}.er{background:#fee4e2;color:#912018}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:520px){.grid{grid-template-columns:1fr}}
@@ -53,7 +53,7 @@ button.sec{background:transparent;color:var(--ac);border:1px solid var(--ac)}but
 
   <div id="docBox" hidden>
     <label>Specialty</label><input id="spec" maxlength="80">
-    <label>MDCN licence number</label><input id="dlic" maxlength="60">
+    <label id="dlicLabel">MDCN licence number</label><input id="dlic" maxlength="60">
     <div class="grid"><div><label>Years of experience</label><input id="yrs" type="number" min="0" max="70"></div>
     <div><label>Consultation fee (₦)</label><input id="fee" type="number" min="0" step="100"></div></div>
     <label>About you</label><textarea id="about" rows="3" maxlength="600"></textarea>
@@ -99,10 +99,12 @@ async function init() {
   if (found) { $("status").hidden = false;
     $("status").textContent = `${found[0]} application (${found[1]}): ${found[2] === "approved" ? "approved, you are live." : found[2] === "pending" ? "pending review. We will notify you once checked." : "status: " + found[2]}`; return; }
   $("form").hidden = false;
+  const q = new URLSearchParams(location.search).get("type");
+  const pre = [...$("types").children].find(b => b.dataset.t === q); if (pre) pre.click();
 }
 $("types").onclick = e => { const t = e.target.dataset.t; if (!t) return; type = t;
   [...$("types").children].forEach(b => b.classList.toggle("on", b.dataset.t === t));
-  const doc = t === "doctor"; $("biz").hidden = doc; $("docBox").hidden = !doc; $("proof").hidden = false;
+  const doc = t === "doctor" || t === "nurse"; $("dlicLabel").textContent = t === "nurse" ? "NMCN licence number" : "MDCN licence number"; $("biz").hidden = doc; $("docBox").hidden = !doc; $("proof").hidden = false;
   $("phBox").hidden = t !== "pharmacy"; $("labBox").hidden = t !== "laboratory";
   $("licLabel").textContent = t === "pharmacy" ? "PCN premises licence number" : "MLSCN licence number"; };
 
@@ -129,7 +131,7 @@ $("submit").onclick = async () => {
   if (!type) return say("Choose Pharmacy, Laboratory or Doctor.", false);
   if (!$("agree").checked) return say("Please confirm the declaration.", false);
   if (!$("licfile").files[0]) return say("Please upload your licence document.", false);
-  const doc = type === "doctor";
+  const doc = type === "doctor" || type === "nurse";
   const req = doc ? [$("spec").value, $("dlic").value, $("fee").value] : [$("name").value, $("lic").value, $("phone").value, $("addr").value, $("state").value, $("city").value];
   if (req.some(v => !String(v).trim())) return say("Please fill in all required fields.", false);
   $("submit").disabled = true; say("Uploading, please wait...", true);
@@ -138,9 +140,9 @@ $("submit").onclick = async () => {
     let err, label;
     if (doc) {
       const photo = await upload("brand-assets", $("photo").files[0], "photo", 2, IMG);
-      ({ error: err } = await db.from("doctor_profiles").insert({ user_id: uid, specialty: $("spec").value.trim(), licence_number: $("dlic").value.trim(),
+      ({ error: err } = await db.from("doctor_profiles").insert({ user_id: uid, profession: type, specialty: $("spec").value.trim(), licence_number: $("dlic").value.trim(),
         years_experience: Number($("yrs").value) || null, consultation_fee: Number($("fee").value) || 0, about: $("about").value.trim(), photo_path: photo }));
-      label = "Doctor: " + $("spec").value.trim();
+      label = (type === "nurse" ? "Nurse: " : "Doctor: ") + $("spec").value.trim();
     } else {
       const logo = await upload("brand-assets", $("logo").files[0], "logo", 2, IMG), banner = await upload("brand-assets", $("banner").files[0], "banner", 2, IMG);
       const base = { owner_id: uid, name: $("name").value.trim(), phone: $("phone").value.trim(), address_text: $("addr").value.trim(), state: $("state").value.trim(),
