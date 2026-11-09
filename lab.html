@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Laboratory dashboard</title>
+<style>
+:root{--bg:#f6f8f7;--card:#fff;--tx:#14201b;--mu:#5d6b64;--ac:#0f766e;--bd:#d9e1dd;--bad:#b42318;--hero:#e6f4f1}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1512;--card:#16201b;--tx:#e8f0ec;--mu:#9baba3;--ac:#2dd4bf;--bd:#2a3a33;--bad:#f97066;--hero:#12231e}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:900px;margin:0 auto;padding:14px}
+.top{display:flex;gap:12px;align-items:center;margin-bottom:12px}.top img{width:56px;height:56px;border-radius:12px;object-fit:cover;background:var(--hero)}
+h1{font-size:19px;margin:0}h2{font-size:16px;margin:0 0 8px}.mu{color:var(--mu);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+input,select{font:inherit;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);width:100%}
+button{font:inherit;padding:9px 14px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer}
+button.s{background:transparent;color:var(--ac);border:1px solid var(--ac)}button.d{background:var(--bad)}button:disabled{opacity:.5}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}nav button{background:transparent;color:var(--tx);border:1px solid var(--bd)}nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--bd);flex-wrap:wrap}.row:first-child{border-top:0}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.stat{font-size:22px;font-weight:700}
+.line{display:grid;grid-template-columns:3fr 1.4fr auto;gap:6px;margin-bottom:6px}
+.badge{font-size:12px;padding:2px 9px;border-radius:99px;background:var(--hero);color:var(--ac);font-weight:600}
+.msg{padding:9px;border-radius:8px;margin-bottom:10px}.ok{background:#d1fadf;color:#05603a}.er{background:#fee4e2;color:#912018}
+</style>
+</head>
+<body>
+<main>
+<div id="msg"></div>
+<div id="gate" class="card" hidden>Please <a href="join.html">sign in</a> first.</div>
+<div id="none" class="card" hidden>No laboratory found on this account. <a href="onboard.html?type=laboratory">Apply here</a>.</div>
+<div id="pend" class="card" hidden>Your laboratory application is not active. It may still be under review, or suspended (for example, an expired licence). Check your notifications or contact support.</div>
+<div id="app" hidden>
+  <div class="top"><img id="logo" alt=""><div><h1 id="pname"></h1><div class="mu" id="ploc"></div></div></div>
+  <nav id="tabs"></nav>
+  <div id="v"></div>
+</div>
+</main>
+<datalist id="tlist"></datalist>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const naira = n => "₦" + Number(n || 0).toLocaleString();
+const nice = m => /fetch|network/i.test(m) ? "Network problem. Check your connection and try again." : m;
+function say(t, ok) { $("msg").innerHTML = t ? `<div class="msg ${ok ? "ok" : "er"}">${esc(nice(t))}</div>` : ""; if (t) window.scrollTo(0, 0); }
+let db, uid, lab, TESTS = {}, TLIST = [];
+const BANKS = [["Access Bank","044"],["First Bank","011"],["GTBank","058"],["UBA","033"],["Zenith Bank","057"],["Fidelity Bank","070"],["Union Bank","032"],["Sterling Bank","232"],["Stanbic IBTC","221"],["Wema Bank","035"],["Polaris Bank","076"],["FCMB","214"]];
+const STATUS = { requested: "Needs your quote", quoted: "Quote sent, awaiting payment", paid: "Paid", sample_collected: "Sample collected: upload results", result_ready: "Results sent", cancelled: "Cancelled", refunded: "Refunded" };
+
+async function boot() {
+  try {
+    if (typeof HCH === "undefined") throw new Error("config.js did not load.");
+    db = supabase.createClient(HCH.url.trim().replace(/\/+$/, ""), HCH.key.trim());
+  } catch (e) { return say(e.message); }
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) return $("gate").hidden = false;
+  uid = session.user.id;
+  const { data } = await db.from("laboratories").select("*").eq("owner_id", uid).maybeSingle();
+  if (!data) return $("none").hidden = false;
+  if (data.status !== "approved") return $("pend").hidden = false;
+  lab = data; $("app").hidden = false;
+  $("pname").textContent = lab.name; $("ploc").textContent = [lab.city, lab.state].filter(Boolean).join(", ") + (lab.phone ? " · " + lab.phone : "");
+  if (lab.logo_path) $("logo").src = db.storage.from("brand-assets").getPublicUrl(lab.logo_path).data.publicUrl; else $("logo").hidden = true;
+  $("tabs").innerHTML = [["orders","Requests"],["tests","Tests & prices"],["earnings","Earnings"],["bank","Bank details"]].map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
+  $("tabs").onclick = e => e.target.dataset.k && show(e.target.dataset.k);
+  await loadTests(true); show("orders");
+  setInterval(() => { if ($("tabs").querySelector(".on")?.dataset.k === "orders" && !document.activeElement.closest?.(".bill,.res")) loadOrders(); }, 45000);
+}
+function show(k) { [...$("tabs").children].forEach(b => b.classList.toggle("on", b.dataset.k === k)); say(""); ({ orders: loadOrders, tests: renderTests, earnings: loadEarnings, bank: loadBank })[k](); }
+
+// ---------- TESTS ----------
+async function loadTests(quiet) {
+  const { data } = await db.from("lab_tests").select("*").eq("lab_id", lab.id).order("name");
+  TLIST = data || []; TESTS = {}; TLIST.forEach(t => TESTS[t.name.toLowerCase()] = t.price);
+  $("tlist").innerHTML = TLIST.map(t => `<option value="${esc(t.name)}">`).join("");
+  if (!quiet) renderTests();
+}
+function renderTests() {
+  $("v").innerHTML = `<div class="card"><h2>Add a test</h2><input id="tn" placeholder="Test name (e.g. Full blood count)"><div style="height:6px"></div>
+    <div class="g"><input id="ts" placeholder="Sample (blood, urine...)"><input id="tp" type="number" min="0" step="50" placeholder="Price ₦"><input id="tt" type="number" min="1" placeholder="Result time (hours)"></div>
+    <button id="tadd" style="margin-top:8px">Add test</button></div>
+    <div class="card"><h2>Your tests (${TLIST.length})</h2>${TLIST.map(t => `<div class="row"><div><b>${esc(t.name)}</b> <span class="mu">${esc(t.sample_type || "")}</span>
+    <div class="mu">${naira(t.price)}${t.turnaround_hours ? " · results in " + esc(t.turnaround_hours) + "h" : ""} · ${t.active ? "Available" : "Paused"}</div></div>
+    <div><button class="s" data-act2="${esc(t.id)}" data-to="${!t.active}">${t.active ? "Pause" : "Resume"}</button> <button class="s" data-price="${esc(t.id)}">Price</button> <button class="d" data-del="${esc(t.id)}">Delete</button></div></div>`).join("") || "<div class='mu'>No tests yet.</div>"}</div>`;
+}
+async function testClick(t) {
+  if (t.id === "tadd") {
+    const name = $("tn").value.trim(), price = Number($("tp").value);
+    if (!name || $("tp").value === "" || !(price >= 0)) return say("Enter a test name and price.");
+    const { error } = await db.from("lab_tests").insert({ lab_id: lab.id, name, sample_type: $("ts").value.trim() || null, price, turnaround_hours: parseInt($("tt").value) || null });
+    if (error) return say(error.message); say("Test added.", true); await loadTests();
+  } else if (t.dataset.act2) { const { error } = await db.from("lab_tests").update({ active: t.dataset.to === "true" }).eq("id", t.dataset.act2); if (error) return say(error.message); await loadTests();
+  } else if (t.dataset.price) { const v = prompt("New price in ₦:"); if (v === null) return; const n = Number(v); if (v.trim() === "" || !(n >= 0)) return say("Enter a valid price.");
+    const { error } = await db.from("lab_tests").update({ price: n }).eq("id", t.dataset.price); if (error) return say(error.message); await loadTests();
+  } else if (t.dataset.del && confirm("Delete this test?")) { const { error } = await db.from("lab_tests").delete().eq("id", t.dataset.del); if (error) return say(error.message); await loadTests(); }
+}
+
+// ---------- REQUESTS ----------
+const lineHtml = (n = "", p = "") => `<div class="line"><input class="dn" list="tlist" placeholder="Test name" value="${esc(n)}"><input class="dp" type="number" min="0" step="50" placeholder="Price ₦" value="${esc(p)}"><button class="d" data-rm>✕</button></div>`;
+async function loadOrders() {
+  const { data: os, error } = await db.from("lab_orders").select("id,patient_id,status,collection,request_text,request_image_path,address_id,scheduled_at,subtotal,collection_fee,total,created_at").eq("lab_id", lab.id).order("created_at", { ascending: false }).limit(50);
+  if (error) return say(error.message);
+  if (!os.length) { $("v").innerHTML = `<div class="card mu">No requests yet. When a patient requests a test from you, it appears here.</div>`; return; }
+  const ids = os.map(o => o.id), pats = [...new Set(os.map(o => o.patient_id))], ads = os.map(o => o.address_id).filter(Boolean);
+  const [it, ad, pr, rs] = await Promise.all([
+    db.from("lab_order_items").select("lab_order_id,test_name,price").in("lab_order_id", ids),
+    ads.length ? db.from("addresses").select("id,address_text").in("id", ads) : Promise.resolve({ data: [] }),
+    db.from("profiles").select("id,display_name,phone").in("id", pats),
+    db.from("lab_results").select("lab_order_id").in("lab_order_id", ids)]);
+  const by = (arr, k) => (arr || []).reduce((m, x) => ((m[x[k]] = m[x[k]] || []).push(x), m), {});
+  const I = by(it.data, "lab_order_id"), A = Object.fromEntries((ad.data || []).map(a => [a.id, a.address_text])), P = Object.fromEntries((pr.data || []).map(p => [p.id, p])), R = by(rs.data, "lab_order_id");
+  $("v").innerHTML = os.map(o => {
+    const items = I[o.id] || [], pat = P[o.patient_id], home = o.collection === "home_collection", billable = ["requested", "quoted"].includes(o.status);
+    let act = "";
+    if (o.status === "paid") act = `<button data-act="sample_collected" data-id="${o.id}">${home ? "Technician collected the sample" : "Sample received"}</button>`;
+    if (o.status === "sample_collected") act = `<div class="res" data-id="${o.id}"><h2>Upload results</h2><input type="file" class="rf" accept="application/pdf,image/png,image/jpeg"><div style="height:6px"></div>
+      <input class="rsum" placeholder="Short summary for the patient (optional)" maxlength="500"><button data-result style="margin-top:8px">Upload and send to patient</button>${(R[o.id] || []).length ? '<div class="mu">A result file was already uploaded for this order.</div>' : ""}</div>`;
+    return `<div class="card"><div class="row" style="border:0;padding:0"><b>Request ${esc(o.id.slice(0, 8))}</b><span class="badge">${STATUS[o.status] || esc(o.status)}</span></div>
+    <div class="mu">${new Date(o.created_at).toLocaleString()} · ${home ? "Home sample collection" : "Patient comes to the lab"}</div>
+    ${pat ? `<div class="mu">Patient: ${esc(pat.display_name)} ${pat.phone ? "· " + esc(pat.phone) : ""}${A[o.address_id] ? "<br>Address: " + esc(A[o.address_id]) : ""}</div>` : ""}
+    <h2 style="margin-top:10px">What was requested</h2><div class="mu">${esc(o.request_text || "See the attached request.")}</div>
+    ${o.request_image_path ? `<a href="#" data-doc="${esc(o.request_image_path)}">View attached request</a>` : ""}
+    ${billable ? `<h2 style="margin-top:10px">Quote</h2><div class="bill" data-id="${o.id}"><div class="lines">${(items.length ? items : [{}]).map(i => lineHtml(i.test_name, i.price)).join("")}</div>
+      <button class="s" data-add>+ test</button> ${home ? `<label class="mu">Collection fee ₦ <input class="cfee" type="number" min="0" value="${esc(o.status === "quoted" ? o.collection_fee : lab.collection_fee || 0)}" style="width:110px"></label>` : ""}
+      <button data-send style="margin-left:6px">${o.status === "quoted" ? "Update quote" : "Send quote"}</button></div>`
+      : `<div class="mu" style="margin-top:6px">${items.map(i => esc(i.test_name) + " — " + naira(i.price)).join("<br>")}<br><b>Total ${naira(o.total)}</b> (collection ${naira(o.collection_fee)})</div>`}
+    <div style="margin-top:8px">${act}</div></div>`;
+  }).join("");
+}
+async function sendQuote(card) {
+  const oid = card.dataset.id;
+  const rows = [...card.querySelectorAll(".line")].map(l => ({ lab_order_id: oid, test_name: l.querySelector(".dn").value.trim(), price: Number(l.querySelector(".dp").value), raw: l.querySelector(".dp").value }));
+  if (!rows.length || rows.some(r => !r.test_name || r.raw === "" || !(r.price >= 0))) return say("Fill in the test name and price on every line.");
+  rows.forEach(r => delete r.raw);
+  await db.from("lab_order_items").delete().eq("lab_order_id", oid);
+  const ins = await db.from("lab_order_items").insert(rows); if (ins.error) return say(ins.error.message);
+  const q = await db.rpc("quote_lab_order", { p_id: oid, p_collection_fee: Number(card.querySelector(".cfee")?.value) || 0 });
+  if (q.error) return say(q.error.message); say("Quote sent to the patient.", true); loadOrders();
+}
+async function sendResult(box, btn) {
+  const oid = box.dataset.id, f = box.querySelector(".rf").files[0];
+  if (!f) return say("Choose the result file (PDF or photo).");
+  if (!["application/pdf", "image/png", "image/jpeg"].includes(f.type)) return say("Results must be a PDF, PNG or JPG file.");
+  if (f.size > 8 * 1048576) return say("The result file is larger than 8 MB.");
+  btn.disabled = true; say("Uploading results...", true);
+  try {
+    const ext = (f.name.split(".").pop() || "pdf").toLowerCase().replace(/[^a-z0-9]/g, ""), path = `${uid}/results/${oid}-${Date.now()}.${ext}`;
+    const up = await db.storage.from("private-docs").upload(path, f, { contentType: f.type }); if (up.error) throw up.error;
+    const ins = await db.from("lab_results").insert({ lab_order_id: oid, file_path: path, summary: box.querySelector(".rsum").value.trim() || null }); if (ins.error) throw ins.error;
+    const st = await db.rpc("set_lab_order_status", { p_id: oid, p_status: "result_ready" }); if (st.error) throw st.error;
+    say("Results uploaded. The patient has been notified.", true); loadOrders();
+  } catch (e) { say(e.message); btn.disabled = false; }
+}
+
+// ---------- EARNINGS ----------
+async function loadEarnings() {
+  const [s, w, p] = await Promise.all([db.rpc("my_wallet_summary"), db.from("wallet_entries").select("amount,status,note,created_at").order("created_at", { ascending: false }).limit(20),
+    db.from("payouts").select("amount,status,created_at").order("created_at", { ascending: false }).limit(10)]);
+  const x = (s.data && s.data[0]) || {};
+  $("v").innerHTML = `<div class="g"><div class="card"><div class="mu">Available</div><div class="stat">${naira(x.available)}</div></div>
+    <div class="card"><div class="mu">Pending (released when results are sent)</div><div class="stat">${naira(x.pending)}</div></div>
+    <div class="card"><div class="mu">Paid out</div><div class="stat">${naira(x.paid_out)}</div></div></div>
+    <div class="card"><button id="wd">Withdraw available balance</button><div class="mu" style="margin-top:6px">Available balances are also queued automatically every day at 23:59. Save your bank details first.</div></div>
+    <div class="card"><h2>Recent sales</h2>${(w.data || []).map(e => `<div class="row"><span>${esc(e.note || "Sale")} <span class="mu">${new Date(e.created_at).toLocaleDateString()}</span></span><span>${naira(e.amount)} <span class="badge">${esc(e.status)}</span></span></div>`).join("") || "<div class='mu'>No sales yet.</div>"}</div>
+    <div class="card"><h2>Payouts</h2>${(p.data || []).map(e => `<div class="row"><span>${new Date(e.created_at).toLocaleDateString()}</span><span>${naira(e.amount)} <span class="badge">${esc(e.status)}</span></span></div>`).join("") || "<div class='mu'>None yet.</div>"}</div>`;
+}
+
+// ---------- BANK ----------
+async function loadBank() {
+  const { data: b } = await db.from("bank_accounts").select("bank_name,bank_code,account_number,account_name").eq("owner_id", uid).maybeSingle();
+  $("v").innerHTML = `<div class="card"><h2>Payout account</h2><p class="mu">Your daily earnings are paid here. The account name must match your laboratory or your name.</p>
+    <select id="bk">${BANKS.map(([n, c]) => `<option value="${c}" ${b && b.bank_code === c ? "selected" : ""}>${n}</option>`).join("")}</select><div style="height:6px"></div>
+    <input id="an" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${esc(b?.account_number || "")}"><div style="height:6px"></div>
+    <input id="ac" placeholder="Account name" value="${esc(b?.account_name || "")}"><br><button id="bsave" style="margin-top:8px">Save bank details</button></div>`;
+  $("v").dataset.has = b ? "1" : "";
+}
+async function saveBank() {
+  const sel = $("bk"), row = { bank_name: sel.options[sel.selectedIndex].text, bank_code: sel.value, account_number: $("an").value.trim(), account_name: $("ac").value.trim() };
+  if (!/^\d{10}$/.test(row.account_number) || !row.account_name) return say("Enter a 10-digit account number and the account name.");
+  const r = $("v").dataset.has ? await db.from("bank_accounts").update(row).eq("owner_id", uid) : await db.from("bank_accounts").insert({ owner_id: uid, ...row });
+  if (r.error) return say(r.error.message); $("v").dataset.has = "1"; say("Bank details saved.", true);
+}
+
+// ---------- events ----------
+$("v").addEventListener("click", async e => {
+  const t = e.target.closest("button, a"); if (!t) return;
+  if (t.dataset.doc) { e.preventDefault(); const { data, error } = await db.storage.from("private-docs").createSignedUrl(t.dataset.doc, 120); return error ? say(error.message) : window.open(data.signedUrl, "_blank", "noopener"); }
+  if (t.id === "wd") { const r = await db.rpc("request_withdrawal"); return r.error ? say(r.error.message) : (say("Withdrawal queued.", true), loadEarnings()); }
+  if (t.id === "bsave") return saveBank();
+  if (t.dataset.act) { const r = await db.rpc("set_lab_order_status", { p_id: t.dataset.id, p_status: t.dataset.act }); return r.error ? say(r.error.message) : loadOrders(); }
+  const bill = t.closest(".bill");
+  if (t.dataset.add !== undefined && bill) return bill.querySelector(".lines").insertAdjacentHTML("beforeend", lineHtml());
+  if (t.dataset.rm !== undefined) return t.closest(".line").remove();
+  if (t.dataset.send !== undefined && bill) return sendQuote(bill);
+  if (t.dataset.result !== undefined) return sendResult(t.closest(".res"), t);
+  testClick(t);
+});
+$("v").addEventListener("change", e => { if (e.target.classList.contains("dn")) { const p = TESTS[e.target.value.trim().toLowerCase()], pr = e.target.closest(".line").querySelector(".dp"); if (p !== undefined && !pr.value) pr.value = p; } });
+boot();
+</script>
+</body>
+</html>
