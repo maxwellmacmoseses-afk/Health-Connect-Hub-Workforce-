@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Doctor dashboard</title>
+<style>
+:root{--bg:#f6f8f7;--card:#fff;--tx:#14201b;--mu:#5d6b64;--ac:#0f766e;--bd:#d9e1dd;--bad:#b42318;--hero:#e6f4f1;--gold:#b7791f}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1512;--card:#16201b;--tx:#e8f0ec;--mu:#9baba3;--ac:#2dd4bf;--bd:#2a3a33;--bad:#f97066;--hero:#12231e;--gold:#f6c453}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+main{max-width:900px;margin:0 auto;padding:14px}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap}
+h1{font-size:19px;margin:0}h2{font-size:16px;margin:0 0 8px}.mu{color:var(--mu);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+input,select,textarea{font:inherit;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);width:100%}
+input[type=checkbox]{width:auto;margin-right:6px}
+button{font:inherit;padding:9px 14px;border:0;border-radius:8px;background:var(--ac);color:#fff;font-weight:600;cursor:pointer}
+button.s{background:transparent;color:var(--ac);border:1px solid var(--ac)}button.d{background:var(--bad)}button.off{background:#6b7a73}button:disabled{opacity:.5}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}nav button{background:transparent;color:var(--tx);border:1px solid var(--bd)}nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--bd);flex-wrap:wrap}.row:first-child{border-top:0}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.stat{font-size:22px;font-weight:700}
+.badge{font-size:12px;padding:2px 9px;border-radius:99px;background:var(--hero);color:var(--ac);font-weight:600}
+.msg{padding:9px;border-radius:8px;margin-bottom:10px}.ok{background:#d1fadf;color:#05603a}.er{background:#fee4e2;color:#912018}
+.chat{height:240px;overflow-y:auto;border:1px solid var(--bd);border-radius:8px;padding:8px;background:var(--bg);margin-bottom:8px}
+.m{margin-bottom:6px;max-width:85%;padding:6px 10px;border-radius:10px;background:var(--hero)}.m.me{margin-left:auto;background:var(--ac);color:#fff}.m small{display:block;opacity:.7;font-size:11px}
+.rxl{display:grid;grid-template-columns:2fr 1fr 3fr .8fr auto;gap:6px;margin-bottom:6px}@media(max-width:600px){.rxl{grid-template-columns:1fr 1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:6px;border-bottom:1px solid var(--bd);text-align:left}
+.cd{font-weight:700;color:var(--gold)}
+</style>
+</head>
+<body>
+<main>
+<div id="msg"></div>
+<div id="gate" class="card" hidden><h2>Sign in</h2><p class="mu">Use the email and password of your account. No email is sent when you sign in.</p><input id="le" type="email" placeholder="Email" autocomplete="username"><div style="height:6px"></div><input id="lp" type="password" placeholder="Password" autocomplete="current-password"><button id="lg" style="margin-top:8px">Sign in</button></div>
+<div id="none" class="card" hidden>No doctor profile found on this account. <a href="onboard.html?type=doctor">Apply here</a>.</div>
+<div id="pend" class="card" hidden>Your doctor application is not active. It may be under review, or suspended (for example, an expired licence). Check your notifications or contact support.</div>
+<div id="app" hidden>
+  <div class="top"><div><h1 id="pname"></h1><div class="mu" id="psub"></div></div><button id="tog"></button></div>
+  <nav id="tabs"></nav>
+  <div id="v"></div>
+</div>
+</main>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const naira = n => "₦" + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const nice = m => /fetch|network/i.test(m) ? "Network problem. Check your connection and try again." : m;
+function say(t, ok) { $("msg").innerHTML = t ? `<div class="msg ${ok ? "ok" : "er"}">${esc(nice(t))}</div>` : ""; if (t) window.scrollTo(0, 0); }
+let db, uid, doc, timers = [], SET = { rate: 0.15, sav: 0.03 };
+const BANKS = [["Access Bank","044"],["First Bank","011"],["GTBank","058"],["UBA","033"],["Zenith Bank","057"],["Fidelity Bank","070"],["Union Bank","032"],["Sterling Bank","232"],["Stanbic IBTC","221"],["Wema Bank","035"],["Polaris Bank","076"],["FCMB","214"]];
+
+async function signIn() {
+  const { error } = await db.auth.signInWithPassword({ email: $("le").value.trim(), password: $("lp").value });
+  if (error) return say(error.message);
+  location.reload();
+}
+async function boot() {
+  try {
+    if (typeof HCH === "undefined") throw new Error("config.js did not load.");
+    db = supabase.createClient(HCH.url.trim().replace(/\/+$/, ""), HCH.key.trim());
+  } catch (e) { return say(e.message); }
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { $("gate").hidden = false; $("lg").onclick = signIn; $("lp").onkeydown = e => { if (e.key === "Enter") signIn(); }; return; }
+  uid = session.user.id;
+  const { data } = await db.from("doctor_profiles").select("*").eq("user_id", uid).maybeSingle();
+  if (!data) return $("none").hidden = false;
+  if (!data.approved) return $("pend").hidden = false;
+  doc = data; $("app").hidden = false;
+  const { data: me } = await db.from("profiles").select("display_name").eq("id", uid).maybeSingle();
+  $("pname").textContent = "Dr. " + (me?.display_name || ""); 
+  const { data: st } = await db.from("platform_settings").select("key,value");
+  (st || []).forEach(x => { if (x.key === "consultation_commission_rate") SET.rate = Number(x.value); if (x.key === "consult_savings_rate") SET.sav = Number(x.value); });
+  drawStatus();
+  $("tabs").innerHTML = [["requests","Requests"],["active","Active consultation"],["earnings","Earnings & savings"],["bank","Bank details"]].map(([k, l]) => `<button data-k="${k}">${l}</button>`).join("");
+  $("tabs").onclick = e => e.target.dataset.k && show(e.target.dataset.k);
+  show("requests");
+}
+function drawStatus() {
+  $("psub").textContent = (doc.specialty || "") + (doc.licence_expiry ? " · licence valid to " + doc.licence_expiry : "");
+  $("tog").textContent = doc.is_available ? "● Online (tap to go offline)" : "○ Offline (tap to go online)"; $("tog").className = doc.is_available ? "" : "off";
+}
+$("tog").onclick = async () => {
+  const to = !doc.is_available, { error } = await db.from("doctor_profiles").update({ is_available: to }).eq("user_id", uid);
+  if (error) return say(error.message); doc.is_available = to; drawStatus(); say(to ? "You are online. New requests will appear under Requests." : "You are offline.", true);
+  if ($("tabs").querySelector(".on")?.dataset.k === "requests") show("requests");
+};
+function show(k) { timers.forEach(clearInterval); timers = []; [...$("tabs").children].forEach(b => b.classList.toggle("on", b.dataset.k === k)); say(""); ({ requests: loadRequests, active: loadActive, earnings: () => loadEarnings(30), bank: loadBank })[k](); }
+
+// ---------- REQUESTS ----------
+async function loadRequests() {
+  if (!doc.is_available) { $("v").innerHTML = `<div class="card">You are <b>offline</b>. Tap the button at the top to go online, and new consultation requests will appear here.</div>`; return; }
+  $("v").innerHTML = `<div class="card mu">Looking for requests...</div>`;
+  const poll = async () => {
+    const { data, error } = await db.rpc("open_consultation_requests"); if (error) return say(error.message);
+    const fee = x => Number(x.fee), net = x => fee(x) * (1 - SET.rate - SET.sav), sv = x => fee(x) * SET.sav;
+    $("v").innerHTML = (data || []).length ? data.map(x => `<div class="card"><div class="row" style="border:0;padding:0"><b>${esc(x.mode === "chat" ? "Chat" : x.mode === "audio" ? "Voice call" : "Video call")} consultation</b>
+      <span class="cd" data-s="${esc(x.seconds_left)}"></span></div>
+      <div class="mu">Patient paid ${naira(fee(x))}. You earn ${naira(net(x))} and ${naira(sv(x))} goes to your savings. Patient details are shown after you accept.</div>
+      <button data-accept="${esc(x.id)}" style="margin-top:8px">Accept this consultation</button></div>`).join("")
+      : `<div class="card"><b>No requests right now.</b><div class="mu">Keep this page open. New requests appear automatically, and the first doctor to accept takes the consultation.</div></div>`;
+    tick();
+  };
+  const tick = () => document.querySelectorAll(".cd").forEach(el => { let s = Number(el.dataset.s); el.textContent = s > 0 ? "Expires in " + Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") : "Expiring..."; });
+  await poll(); timers.push(setInterval(poll, 8000));
+  timers.push(setInterval(() => document.querySelectorAll(".cd").forEach(el => { el.dataset.s = Math.max(0, Number(el.dataset.s) - 1); tick(); }), 1000));
+}
+
+// ---------- ACTIVE CONSULTATION ----------
+const rxRow = () => `<div class="rxl"><input class="r1" placeholder="Drug"><input class="r2" placeholder="Strength"><input class="r3" placeholder="How to take it (dose, how often, how long)"><input class="r4" type="number" min="1" value="1"><button class="d" data-rmrx>✕</button></div>`;
+async function loadActive() {
+  const { data: c } = await db.from("consultations").select("*").eq("doctor_id", uid).eq("status", "in_progress").maybeSingle();
+  if (!c) { $("v").innerHTML = `<div class="card">No active consultation. Go online and accept a request under <b>Requests</b>.</div>`; return; }
+  const { data: p } = await db.from("profiles").select("display_name,phone").eq("id", c.patient_id).maybeSingle();
+  $("v").innerHTML = `<div class="card"><div class="row" style="border:0;padding:0"><b>Patient: ${esc(p?.display_name || "Patient")}</b><span class="badge">${esc(c.mode)} · in progress</span></div>
+    <div class="mu">${p?.phone ? "Phone: " + esc(p.phone) + " · " : ""}Started ${new Date(c.started_at).toLocaleTimeString()}</div>
+    <h2 style="margin-top:10px">Reason for visit</h2><div>${esc(c.reason || "Not stated")}</div>
+    ${c.mode !== "chat" ? `<button data-call style="margin-top:10px">Start ${c.mode === "video" ? "video" : "voice"} call</button> <span class="mu">Opens a call room. The patient joins the same room.</span>` : ""}</div>
+    <div class="card"><h2>Chat with the patient</h2><div class="chat" id="chat"></div><div style="display:flex;gap:6px"><input id="cm" placeholder="Type a message" maxlength="2000"><button data-send>Send</button></div></div>
+    <div class="card"><h2>Report and prescription</h2><textarea id="rep" rows="5" placeholder="Report for the patient: what you found, your assessment and your advice"></textarea>
+      <h2 style="margin-top:10px">Prescription (optional)</h2><div id="rx">${rxRow()}</div><button class="s" data-addrx>+ drug</button><br>
+      <button data-report style="margin-top:8px">Send report and prescription</button></div>
+    <div class="card"><button class="d" data-end>End consultation</button> <span class="mu">Ending releases your earnings and adds ${Math.round(SET.sav * 100)}% to your savings.</span></div>`;
+  $("v").dataset.cid = c.id; $("v").dataset.pid = c.patient_id; $("v").dataset.url = c.meeting_url || "";
+  const msgs = async () => { const { data } = await db.from("consultation_messages").select("sender_id,body,created_at").eq("consultation_id", c.id).order("created_at");
+    const box = $("chat"); if (!box) return; const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+    box.innerHTML = (data || []).map(m => `<div class="m ${m.sender_id === uid ? "me" : ""}"><small>${m.sender_id === uid ? "You" : "Patient"} · ${new Date(m.created_at).toLocaleTimeString()}</small>${esc(m.body)}</div>`).join("") || `<div class="mu">No messages yet.</div>`;
+    if (atEnd) box.scrollTop = box.scrollHeight; };
+  await msgs(); timers.push(setInterval(msgs, 4000));
+}
+async function startCall() {
+  let url = $("v").dataset.url;
+  if (!url) { url = "https://meet.jit.si/HCH-" + $("v").dataset.cid.slice(0, 8) + "-" + crypto.randomUUID().slice(0, 8);
+    const r = await db.from("consultations").update({ meeting_url: url }).eq("id", $("v").dataset.cid); if (r.error) return say(r.error.message); $("v").dataset.url = url; }
+  window.open(url, "_blank", "noopener");
+}
+async function sendMsg() {
+  const t = $("cm").value.trim(); if (!t) return;
+  const { error } = await db.from("consultation_messages").insert({ consultation_id: $("v").dataset.cid, sender_id: uid, body: t }); if (error) return say(error.message);
+  $("cm").value = ""; loadActiveMsgsSoon();
+}
+const loadActiveMsgsSoon = () => setTimeout(async () => { const { data } = await db.from("consultation_messages").select("sender_id,body,created_at").eq("consultation_id", $("v").dataset.cid).order("created_at");
+  const box = $("chat"); if (box) { box.innerHTML = (data || []).map(m => `<div class="m ${m.sender_id === uid ? "me" : ""}"><small>${m.sender_id === uid ? "You" : "Patient"} · ${new Date(m.created_at).toLocaleTimeString()}</small>${esc(m.body)}</div>`).join(""); box.scrollTop = box.scrollHeight; } }, 300);
+async function sendReport(btn) {
+  const cid = $("v").dataset.cid, pid = $("v").dataset.pid, text = $("rep").value.trim();
+  if (!text) return say("Write the report for the patient first.");
+  const rows = [...document.querySelectorAll(".rxl")].map(l => ({ drug_name: l.querySelector(".r1").value.trim(), strength: l.querySelector(".r2").value.trim() || null, dosage_instructions: l.querySelector(".r3").value.trim(), quantity: parseInt(l.querySelector(".r4").value) || 0 })).filter(r => r.drug_name || r.dosage_instructions);
+  if (rows.some(r => !r.drug_name || !r.dosage_instructions || r.quantity < 1)) return say("Each drug needs a name, how to take it, and a quantity.");
+  btn.disabled = true;
+  try {
+    let rep = (await db.from("consultation_reports").select("id,status").eq("consultation_id", cid).maybeSingle()).data;
+    if (rep && rep.status === "sent") throw new Error("The report for this consultation was already sent.");
+    if (rep) { const u = await db.from("consultation_reports").update({ doctor_notes: text, final_report: text }).eq("id", rep.id); if (u.error) throw u.error; }
+    else { const i = await db.from("consultation_reports").insert({ consultation_id: cid, doctor_id: uid, patient_id: pid, doctor_notes: text, final_report: text }).select("id").single(); if (i.error) throw i.error; rep = i.data; }
+    if (rows.length) {
+      const pr = await db.from("prescriptions").insert({ consultation_id: cid, patient_id: pid, doctor_id: uid, source: "platform", notes: text.slice(0, 300) }).select("id").single(); if (pr.error) throw pr.error;
+      const it = await db.from("prescription_items").insert(rows.map(r => ({ ...r, prescription_id: pr.data.id }))); if (it.error) throw it.error;
+    }
+    const s = await db.rpc("send_report", { p_report: rep.id }); if (s.error) throw s.error;
+    say("Report" + (rows.length ? " and prescription" : "") + " sent to the patient.", true);
+  } catch (e) { say(e.message); btn.disabled = false; }
+}
+async function endConsult() {
+  if (!confirm("End this consultation? Your earnings will be released and the chat will close.")) return;
+  const r = await db.rpc("complete_consultation", { p_id: $("v").dataset.cid }); if (r.error) return say(r.error.message);
+  say("Consultation completed. Your earnings and savings are updated.", true); show("earnings");
+}
+
+// ---------- EARNINGS, SAVINGS, CASH FLOW ----------
+function chart(rows) {
+  if (!rows.length) return "";
+  const W = 640, H = 230, L = 52, R = 10, T = 14, B = 30, n = rows.length, iw = W - L - R, ih = H - T - B;
+  const mi = Math.max(1, ...rows.map(r => Number(r.income) + Number(r.savings))), mc = Math.max(1, ...rows.map(r => Number(r.cumulative_total)));
+  const bw = Math.max(2, iw / n - 3), x = i => L + (i + 0.5) * iw / n;
+  const bars = rows.map((r, i) => { const h = (Number(r.income) + Number(r.savings)) / mi * ih * 0.6; return `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${(T + ih - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="var(--ac)" opacity=".35"/>`; }).join("");
+  const pts = rows.map((r, i) => `${x(i).toFixed(1)},${(T + ih - Number(r.cumulative_total) / mc * ih).toFixed(1)}`).join(" ");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><line x1="${L}" y1="${T + ih}" x2="${W - R}" y2="${T + ih}" stroke="var(--bd)"/>
+    <text x="${L - 6}" y="${T + 10}" text-anchor="end" font-size="10" fill="var(--mu)">${naira(mc)}</text><text x="${L - 6}" y="${T + ih}" text-anchor="end" font-size="10" fill="var(--mu)">₦0</text>
+    ${bars}<polyline points="${pts}" fill="none" stroke="var(--ac)" stroke-width="2.5"/>
+    <text x="${L}" y="${H - 8}" font-size="10" fill="var(--mu)">${esc(rows[0].day)}</text><text x="${W - R}" y="${H - 8}" text-anchor="end" font-size="10" fill="var(--mu)">${esc(rows[n - 1].day)}</text></svg>`;
+}
+async function loadEarnings(days) {
+  const [w, s, cf, tx] = await Promise.all([db.rpc("my_wallet_summary"), db.rpc("my_savings_summary"), db.rpc("doctor_cashflow", { p_days: days }),
+    db.from("consultations").select("completed_at,duration_seconds,fee,commission_amount,savings_amount,doctor_amount").eq("doctor_id", uid).eq("status", "completed").order("completed_at", { ascending: false }).limit(30)]);
+  const x = (w.data && w.data[0]) || {}, sv = (s.data && s.data[0]) || {}, rows = cf.data || [];
+  const last7 = rows.slice(-7).reverse(), total = rows.reduce((a, r) => a + Number(r.income) + Number(r.savings), 0);
+  $("v").innerHTML = `<div class="g"><div class="card"><div class="mu">Available to withdraw</div><div class="stat">${naira(x.available)}</div></div>
+    <div class="card"><div class="mu">Pending (until you end the consultation)</div><div class="stat">${naira(x.pending)}</div></div>
+    <div class="card"><div class="mu">Paid out</div><div class="stat">${naira(x.paid_out)}</div></div></div>
+    <div class="card"><button id="wd">Withdraw available balance</button><div class="mu" style="margin-top:6px">Available balances are also queued automatically every day at 23:59. Save your bank details first.</div></div>
+    <div class="card"><h2>Your savings</h2><div class="g"><div><div class="mu">Savings balance</div><div class="stat">${naira(sv.balance)}</div></div>
+      <div><div class="mu">${sv.monthly_payout ? "Due at month-end" : "Next month-end"}</div><div class="stat" style="font-size:18px">${esc(sv.next_due || "")}</div></div>
+      <div><div class="mu">Already received</div><div class="stat">${naira(sv.released_total)}</div></div></div>
+      <label style="display:block;margin-top:10px"><input type="checkbox" id="sm" ${sv.monthly_payout ? "checked" : ""}>Pay my savings to me at the end of each month</label>
+      <div class="mu">${Math.round(SET.sav * 100)}% of each completed consultation is set aside for you. If this box is off, your savings keep accumulating until you choose to receive them.</div></div>
+    <div class="card"><div class="row" style="border:0;padding:0"><h2 style="margin:0">Cash flow</h2><select id="dy" style="width:auto"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></div>
+      <div class="mu">Bars: daily income plus savings. Line: running total. Total in this period: <b>${naira(total)}</b></div>${chart(rows)}</div>
+    <div class="card"><h2>Daily income (last 7 days)</h2>${last7.map(r => `<div class="row"><span>${esc(r.day)}</span><span>${naira(r.income)} <span class="mu">+ ${naira(r.savings)} savings</span></span></div>`).join("") || "<div class='mu'>No data yet.</div>"}</div>
+    <div class="card"><h2>Transaction history</h2>${(tx.data || []).length ? `<div style="overflow-x:auto"><table><tr><th>Date</th><th>Time</th><th>Fee</th><th>HCH</th><th>Savings</th><th>You earned</th></tr>${tx.data.map(t => `<tr><td>${new Date(t.completed_at).toLocaleDateString()}</td><td>${Math.round((t.duration_seconds || 0) / 60)} min</td><td>${naira(t.fee)}</td><td>${naira(t.commission_amount)}</td><td>${naira(t.savings_amount)}</td><td><b>${naira(t.doctor_amount)}</b></td></tr>`).join("")}</table></div>` : "<div class='mu'>No completed consultations yet.</div>"}</div>`;
+  $("dy").value = String(days);
+}
+
+// ---------- BANK ----------
+async function loadBank() {
+  const { data: b } = await db.from("bank_accounts").select("bank_name,bank_code,account_number,account_name").eq("owner_id", uid).maybeSingle();
+  $("v").innerHTML = `<div class="card"><h2>Payout account</h2><p class="mu">Your daily earnings are paid here. The account name must match your name.</p>
+    <select id="bk">${BANKS.map(([n, c]) => `<option value="${c}" ${b && b.bank_code === c ? "selected" : ""}>${n}</option>`).join("")}</select><div style="height:6px"></div>
+    <input id="an" inputmode="numeric" maxlength="10" placeholder="10-digit account number" value="${esc(b?.account_number || "")}"><div style="height:6px"></div>
+    <input id="ac" placeholder="Account name" value="${esc(b?.account_name || "")}"><br><button id="bsave" style="margin-top:8px">Save bank details</button></div>`;
+  $("v").dataset.has = b ? "1" : "";
+}
+async function saveBank() {
+  const sel = $("bk"), row = { bank_name: sel.options[sel.selectedIndex].text, bank_code: sel.value, account_number: $("an").value.trim(), account_name: $("ac").value.trim() };
+  if (!/^\d{10}$/.test(row.account_number) || !row.account_name) return say("Enter a 10-digit account number and the account name.");
+  const r = $("v").dataset.has ? await db.from("bank_accounts").update(row).eq("owner_id", uid) : await db.from("bank_accounts").insert({ owner_id: uid, ...row });
+  if (r.error) return say(r.error.message); $("v").dataset.has = "1"; say("Bank details saved.", true);
+}
+
+// ---------- events ----------
+$("v").addEventListener("click", async e => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.accept) { t.disabled = true; const r = await db.rpc("accept_consultation", { p_id: t.dataset.accept }); if (r.error) { say(r.error.message); t.disabled = false; return loadRequests(); } say("You accepted the consultation.", true); return show("active"); }
+  if (t.dataset.call !== undefined) return startCall();
+  if (t.dataset.send !== undefined) return sendMsg();
+  if (t.dataset.addrx !== undefined) return $("rx").insertAdjacentHTML("beforeend", rxRow());
+  if (t.dataset.rmrx !== undefined) return t.closest(".rxl").remove();
+  if (t.dataset.report !== undefined) return sendReport(t);
+  if (t.dataset.end !== undefined) return endConsult();
+  if (t.id === "wd") { const r = await db.rpc("request_withdrawal"); return r.error ? say(r.error.message) : (say("Withdrawal queued.", true), loadEarnings(Number($("dy").value))); }
+  if (t.id === "bsave") return saveBank();
+});
+$("v").addEventListener("change", async e => {
+  if (e.target.id === "dy") return loadEarnings(Number(e.target.value));
+  if (e.target.id === "sm") { const r = await db.rpc("set_savings_choice", { p_monthly: e.target.checked }); if (r.error) { say(r.error.message); e.target.checked = !e.target.checked; } else say(e.target.checked ? "Your savings will be paid to you at month-end." : "Your savings will keep accumulating.", true); }
+});
+$("v").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "cm") sendMsg(); });
+boot();
+</script>
+</body>
+</html>
